@@ -1,0 +1,1 @@
+1. `poetry shell`を実行するのに、rootディレクトリにREADME.mdが必要なので追加
