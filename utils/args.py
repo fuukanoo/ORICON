@@ -34,6 +34,8 @@ def get_args():
                         help="Weight for KL divergence in VAE loss (default: 1.0)")
     parser.add_argument("--vae_sigma", type=float, default=1.0,
                         help="Strength of sampling in VAE (default: 1.0)")
+    parser.add_argument("--scale", action="store_true", default=False, help="埋め込みを StandardScaler で Z スコア標準化するかどうか"
+)
     # Parse arguments
     args = parser.parse_args()
     
