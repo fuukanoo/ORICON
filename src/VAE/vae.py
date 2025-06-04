@@ -22,8 +22,8 @@ class VAE(nn.Module):
         return self.fc_mu(h), self.fc_logvar(h)
 
     def reparameterize(self, mu, logvar):
-        std = (0.5 * logvar).exp()
-        eps = torch.randn_like(std) * sigma
+        std = torch.exp(0.5 * logvar)                
+        eps = torch.randn_like(std)                  
         return mu + eps * std # あんまり良く無いかもしれないっぽい。ちょっとGPTと喋る。
 
     def decode(self, z):

@@ -6,16 +6,23 @@ import pandas as pd
 import random
 import logging
 from torch.utils.data import Dataset, DataLoader, TensorDataset
+from sklearn.preprocessing import StandardScaler
+from ot.unbalanced import sinkhorn_unbalanced
+import os 
+import matplotlib.pyplot as plt 
+import seaborn as sns 
+from sklearn.metrics import pairwise_distances 
 
 
 from src.BYOL.byol import train_byol
 from src.BYOL.byol_models import BYOL, byol_loss
 from src.VAE.vae import VAE, train_vae
-from src.PCA_UMAP import visualize_pca_umap
+from src.PCA_UMAP.visualize import visualize_pca_umap 
 from utils.utils import set_seed, read_data, make_feature_df, scale_imputer
 from utils.logger import init_logger
 from utils.args import get_args
 from utils.dataloader import ServiceDataset
+from src.Optimal_transportation.ot import run_ot_for_candidate
 
 class Config:
     """argsで変えないもの"""
@@ -23,6 +30,12 @@ class Config:
     results_data_path = "./data/results"
     project_name = "ORICON"
     
+def compute_cost_matrix(X: np.ndarray, Y: np.ndarray, metric="euclidean") -> np.ndarray:
+    """
+    コスト行列 (pairwise_distances) を計算するラッパー関数
+    """
+    return pairwise_distances(X, Y, metric=metric)
+
 
 def main(args, config: Config = None):
     # Logger initialization - this should be done once at the start
@@ -72,9 +85,13 @@ def main(args, config: Config = None):
             h, _ = byol_trained_model.online(X.to(device))
             embeddings = h.cpu().numpy()
             
-        np.save(f"{config.shared_data_path}/embeddings.npy", embeddings) #TODO: byolを使わない時のembeddingsの処理
+        np.save(f"{config.shared_data_path}/embeddings.npy", embeddings)
         np.save(f"{config.shared_data_path}/feat_columns.npy", feat_df.columns.values)
-        
+    else:
+        # BYOLを使用しない場合の処理
+        logger.info("BYOL not used, initializing embeddings manually...")
+        embeddings = feat_df.values.astype(np.float32)  # 特徴量データをそのまま使用
+        np.save(f"{config.shared_data_path}/embeddings.npy", embeddings)       
         # if args.visualize_process:
             # logger.info("Visualizing embeddings...")
             # emb_df = pd.DataFrame(embeddings, index=feat_df.index)
@@ -93,13 +110,47 @@ def main(args, config: Config = None):
     vae_optimizer = torch.optim.Adam(vae.parameters(), lr=args.vae_lr)
     
     #TODO: 64次元データのままにしてる。33にするなら追加で処理必要。あるいは33のまま最初から処理をするか
-    emb_new = train_vae(vae, 
-                        vae_dataloaer, 
-                        vae_optimizer, 
-                        vae_dataset = vae_dataset,
-                        beta=args.vae_beta,
-                        latent_dim=args.vae_latent_dim,
-                        epochs=args.vae_n_epochs)
+    emb_new = train_vae(
+        vae=vae,
+        loader=vae_dataloaer,      # DataLoader
+        opt=vae_optimizer,
+        dataset=vae_dataset,       # TensorDataset
+        beta=args.vae_beta,
+        latent_dim=args.vae_latent_dim,
+        epochs=args.vae_n_epochs
+    )
+    # 生成結果を保存して OT で使えるように
+    np.save(f"{config.shared_data_path}/emb_new.npy", emb_new)
+
+
+
+    # Optimal Transport
+    logger.info("Loading embeddings for OT...")
+    X_curr = np.load(f"{config.shared_data_path}/embeddings.npy")
+    Y_fut = np.load(f"{config.shared_data_path}/emb_new.npy")
+
+    scaler = StandardScaler()
+    X_curr = scaler.fit_transform(X_curr)
+    Y_fut = scaler.transform(Y_fut)
+
+    logger.info("Setting mass vectors...")
+    feat_df = pd.read_pickle(f"{config.shared_data_path}/feat_df.pkl")
+    mass_curr = np.ones(X_curr.shape[0]) / X_curr.shape[0]  # 一様分布
+    nonuser_mass = 0.1
+    residual_mass = 0.1
+    total_market_size = 1000000  # 仮の市場規模
+    arpu_list = [1200, 1500, 1000, 1300, 1600]  # 仮のARPUデータ
+
+    logger.info("Running OT for candidates...")
+    results = []
+    for idx in range(Y_fut.shape[0]):
+        res = run_ot_for_candidate(X_curr, Y_fut, idx, mass_curr, nonuser_mass, residual_mass, eps=0.2, tau=0.1, total_market_size=total_market_size, arpu_list=arpu_list)
+        results.append(res)
+
+    df_result = pd.DataFrame(results)
+    os.makedirs(config.results_data_path, exist_ok=True)
+    df_result.to_csv(f"{config.results_data_path}/ot_results.csv", index=False)
+    logger.info(f"Results saved to {config.results_data_path}/ot_results.csv")
     
     
     
