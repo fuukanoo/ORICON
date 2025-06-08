@@ -21,8 +21,6 @@ def read_data(file_path='./data/定額制動画配信.xlsx'):
 # 3. 特徴量集計関数
 def make_feature_df(df, format_df):
     # 2. サービスコード→サービス名マッピング（SQ6_1ベース）
-    print(format_df.columns)
-    print(format_df.head())
     sq6_1 = format_df[format_df["Question"].astype(str).str.startswith("SQ6_1[")][["Question","Title"]].dropna()
     code_title = {
         int(q.split("[")[1].split("]")[0]): title
