@@ -7,7 +7,7 @@ from utils.logger import get_logger
 
 # 2. VAE モデル定義
 class VAE(nn.Module):
-    def __init__(self, input_dim, hidden_dim, latent_dim):
+    def __init__(self, input_dim, hidden_dim, latent_dim, vae_sigma):
         super().__init__()
         # Encoder
         self.fc1 = nn.Linear(input_dim, hidden_dim)
@@ -16,14 +16,17 @@ class VAE(nn.Module):
         # Decoder
         self.fc2 = nn.Linear(latent_dim, hidden_dim)
         self.fc3 = nn.Linear(hidden_dim, input_dim)
+        
+        # VAEのサンプリング強さを調整するパラメータ
+        self.vae_sigma = vae_sigma
 
     def encode(self, x):
         h = torch.relu(self.fc1(x))
         return self.fc_mu(h), self.fc_logvar(h)
 
     def reparameterize(self, mu, logvar):
-        std = (0.5 * logvar).exp()
-        eps = torch.randn_like(std) * sigma
+        std = torch.exp(0.5 * logvar)                
+        eps = torch.randn_like(std)*self.vae_sigma  # vae_sigmaを掛けることでサンプリングの強さを調整               
         return mu + eps * std # あんまり良く無いかもしれないっぽい。ちょっとGPTと喋る。
 
     def decode(self, z):
