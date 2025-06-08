@@ -36,6 +36,15 @@ def get_args():
                         help="Strength of sampling in VAE (default: 1.0)")
     parser.add_argument("--scale", action="store_true", default=False, help="埋め込みを StandardScaler で Z スコア標準化するかどうか"
 )
+    # OT
+    parser.add_argument("--nonuser_mass", type=float, default=0.1,
+                        help="Mass for non-user in OT (default: 1.0)")
+    parser.add_argument("--residual_mass", type=int, default=0.1,
+                        help="Residual mass for OT (default: 0.1)")
+    parser.add_argument("--total_market_size", type=int, default=1000000,
+                        help="Total market size for OT (default: 1000000)")
+    parser.add_argument("--arpu_list", type=list, default=[1200, 1500, 1000, 1300, 1600],
+                        help="List of ARPU values for OT (default: [1200, 1500, 1000, 1300, 1600])")
     # Parse arguments
     args = parser.parse_args()
     

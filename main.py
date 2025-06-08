@@ -106,7 +106,7 @@ def main(args, config: Config = None):
     embeddings = np.load(f"{config.shared_data_path}/embeddings.npy")
     
     input_dim = embeddings.shape[1]
-    vae = VAE(input_dim, args.vae_hidden_dim, args.vae_latent_dim).to(device)
+    vae = VAE(input_dim, args.vae_hidden_dim, args.vae_latent_dim, args.vae_sigma).to(device)
     vae_optimizer = torch.optim.Adam(vae.parameters(), lr=args.vae_lr)
     
     #TODO: 64次元データのままにしてる。33にするなら追加で処理必要。あるいは33のまま最初から処理をするか
@@ -136,10 +136,10 @@ def main(args, config: Config = None):
     logger.info("Setting mass vectors...")
     feat_df = pd.read_pickle(f"{config.shared_data_path}/feat_df.pkl")
     mass_curr = np.ones(X_curr.shape[0]) / X_curr.shape[0]  # 一様分布
-    nonuser_mass = 0.1
-    residual_mass = 0.1
-    total_market_size = 1000000  # 仮の市場規模
-    arpu_list = [1200, 1500, 1000, 1300, 1600]  # 仮のARPUデータ
+    nonuser_mass = args.nonuser_mass  
+    residual_mass = args.residual_mass  
+    total_market_size = args.total_market_size  # 仮の市場規模
+    arpu_list = args.arpu_list  # 仮のARPUデータ
 
     logger.info("Running OT for candidates...")
     results = []
