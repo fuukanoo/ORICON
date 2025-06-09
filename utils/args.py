@@ -34,17 +34,18 @@ def get_args():
                         help="Weight for KL divergence in VAE loss (default: 1.0)")
     parser.add_argument("--vae_sigma", type=float, default=1.0,
                         help="Strength of sampling in VAE (default: 1.0)")
-    parser.add_argument("--scale", action="store_true", default=False, help="埋め込みを StandardScaler で Z スコア標準化するかどうか"
-)
-    # OT
-    parser.add_argument("--nonuser_mass", type=float, default=0.1,
-                        help="Mass for non-user in OT (default: 1.0)")
-    parser.add_argument("--residual_mass", type=int, default=0.1,
-                        help="Residual mass for OT (default: 0.1)")
-    parser.add_argument("--total_market_size", type=int, default=1000000,
-                        help="Total market size for OT (default: 1000000)")
-    parser.add_argument("--arpu_list", type=list, default=[1200, 1500, 1000, 1300, 1600],
-                        help="List of ARPU values for OT (default: [1200, 1500, 1000, 1300, 1600])")
+
+    parser.add_argument("--scale", action="store_true", default=False,
+                        help="埋め込みを StandardScaler で Z スコア標準化するかどうか")
+    parser.add_argument("--nonuser_mass", type=float, default=0.544,
+                    help="非ユーザーの質量(デフォルト: 0.544)")
+    parser.add_argument("--residual_mass", type=float, default=0.138,
+                    help="残留層の質量(デフォルト: 0.138)")
+    parser.add_argument("--total_market_size", type=float, default=124_500_000,
+                    help="総市場サイズ(残留層を除く)(デフォルト: 124_500_000)")
+    parser.add_argument("--arpu_list", type=float, default=1000,
+                    help="月額(デフォルト: 1000)")
+    
     # Parse arguments
     args = parser.parse_args()
     

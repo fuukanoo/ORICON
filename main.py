@@ -22,13 +22,16 @@ from utils.utils import set_seed, read_data, make_feature_df, scale_imputer
 from utils.logger import init_logger
 from utils.args import get_args
 from utils.dataloader import ServiceDataset
-from src.Optimal_transportation.ot import run_ot_for_candidate
+from Optimal_transportation.ot_main import run_ot_for_candidate
 
 class Config:
     """argsで変えないもの"""
     shared_data_path = "./data/shared"
     results_data_path = "./data/results"
     project_name = "ORICON"
+    scaler_filename = "scaler.gz"
+    embeddings_filename = "embeddings.npy"
+    new_embeddings_filename = "emb_new.npy"
     
 def compute_cost_matrix(X: np.ndarray, Y: np.ndarray, metric="euclidean") -> np.ndarray:
     """
@@ -124,35 +127,42 @@ def main(args, config: Config = None):
 
 
 
+
+
+
+
     # Optimal Transport
-    logger.info("Loading embeddings for OT...")
-    X_curr = np.load(f"{config.shared_data_path}/embeddings.npy")
-    Y_fut = np.load(f"{config.shared_data_path}/emb_new.npy")
+    logger.info("Starting Optimal Transportation analysis...")
+    from src.Optimal_transportation.utils import load_and_scale_data, calculate_mass_vectors
+    from src.Optimal_transportation.ot_main import run_ot_for_candidate
+    from src.Optimal_transportation.config import OTConfig
+    from src.Optimal_transportation.visualize import visualize_results
 
-    scaler = StandardScaler()
-    X_curr = scaler.fit_transform(X_curr)
-    Y_fut = scaler.transform(Y_fut)
 
-    logger.info("Setting mass vectors...")
-    feat_df = pd.read_pickle(f"{config.shared_data_path}/feat_df.pkl")
-    mass_curr = np.ones(X_curr.shape[0]) / X_curr.shape[0]  # 一様分布
-    nonuser_mass = args.nonuser_mass  
-    residual_mass = args.residual_mass  
-    total_market_size = args.total_market_size  # 仮の市場規模
-    arpu_list = args.arpu_list  # 仮のARPUデータ
 
-    logger.info("Running OT for candidates...")
+    # データの読み込みとスケーリング
+    X_curr, Y_fut = load_and_scale_data(config, logger)
+    
+    # 質量ベクトルの計算
+    a_vec = calculate_mass_vectors(feat_df, OTConfig, logger)
+    
+    # OT実行
     results = []
     for idx in range(Y_fut.shape[0]):
-        res = run_ot_for_candidate(X_curr, Y_fut, idx, mass_curr, nonuser_mass, residual_mass, eps=0.2, tau=0.1, total_market_size=total_market_size, arpu_list=arpu_list)
+        res = run_ot_for_candidate(X_curr, Y_fut, idx, 
+                                 mass_curr=a_vec[:-2],
+                                 nonuser_mass=a_vec[-2],
+                                 residual_mass=a_vec[-1])
         results.append(res)
 
+    # 結果の保存
     df_result = pd.DataFrame(results)
     os.makedirs(config.results_data_path, exist_ok=True)
     df_result.to_csv(f"{config.results_data_path}/ot_results.csv", index=False)
     logger.info(f"Results saved to {config.results_data_path}/ot_results.csv")
-    
-    
+   
+    # 結果の可視化と新サービスの特徴量保存
+    Y_fut_df = visualize_results(df_result, Y_fut, feat_df, config, logger)
     
 if __name__ == "__main__":
     args = get_args()

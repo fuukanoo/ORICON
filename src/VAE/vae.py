@@ -24,9 +24,11 @@ class VAE(nn.Module):
         h = torch.relu(self.fc1(x))
         return self.fc_mu(h), self.fc_logvar(h)
 
-    def reparameterize(self, mu, logvar):
+    def reparameterize(self, mu, logvar, sigma=args.vae_sigma):
         std = torch.exp(0.5 * logvar)                
-        eps = torch.randn_like(std)*self.vae_sigma  # vae_sigmaを掛けることでサンプリングの強さを調整               
+
+        eps = torch.randn_like(std)*sigma                  
+
         return mu + eps * std # あんまり良く無いかもしれないっぽい。ちょっとGPTと喋る。
 
     def decode(self, z):
