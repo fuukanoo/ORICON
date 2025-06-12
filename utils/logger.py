@@ -34,3 +34,17 @@ def get_logger(name='ORICON'):
         return init_logger(name)
     
     return logger
+
+# _logger_initialized = False  # グローバル変数として初期化
+
+# def get_logger(name):
+#     global _logger_initialized  # グローバル変数を使用
+#     logger = logging.getLogger(name)
+#     if not logger.hasHandlers() and not _logger_initialized:
+#         handler = logging.StreamHandler()
+#         formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+#         handler.setFormatter(formatter)
+#         logger.addHandler(handler)
+#         logger.setLevel(logging.INFO)
+#         _logger_initialized = True  # 初期化済みフラグを設定
+#     return logger
