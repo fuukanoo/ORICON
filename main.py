@@ -14,12 +14,15 @@ import seaborn as sns
 from sklearn.metrics import pairwise_distances 
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="matplotlib")
+import logging
+logging.getLogger("matplotlib.font_manager").setLevel(logging.ERROR)
 
 from src.BYOL.byol import train_byol
 from src.BYOL.byol_models import BYOL, byol_loss
 # from src.VAE.vae import VAE, train_vae
 from src.VAE.CondBetaVAE import CondBetaVAE, vae_loss, train_vae
 from src.VAE.traverse_latents_condbetavae import save_latent_traversal_plot
+from src.VAE.pca_tools import run_pca, _hex_radar, save_radar_batch
 from src.PCA_UMAP.visualize import visualize_pca_umap 
 from utils.utils import set_seed, read_data, make_feature_df, scale_imputer
 from utils.logger import init_logger
@@ -278,33 +281,91 @@ def main(args, config: Config = None):
     #   • mins / maxs = None  → もうスケールしてあるので不要
     #   • ylim        = (r_low, r_high)  ← 下限も上限も固定
     # ---------------------------------------------------------
-    save_radar_charts(
-        z_matrix = z_existing,
-        svc_names= feat_df.index.tolist(),
-        output_dir = config.results_data_path,
-        sel_idx  = sel_idx,
-        mins      = z_min,
-        maxs      = z_max,
-        ylim      = (0, 1.0)  # ← ★ 既存サービスは 0〜1 の範囲で固定
-    )
     
 
-    # (新) スケール前の 6列だけ抜いた行列を渡す
+
+
+
+
+    # ---------- PCA（既存で fit, new は transform だけ） ----------
+    (score_df, load_df, var_ratio,
+    scaler_exist, pca_exist) = run_pca(
+            X_exist   = feat_df.values.astype(np.float32),
+            X_new     = emb_new.astype(np.float32),
+            feat_cols = feat_df.columns,
+            svc_exist_names = feat_df.index.tolist(),
+            out_dir  = config.results_data_path,
+            n_components = 6,
+            fit_on_exist_only = True,
+            logger   = logger)
+
+    # --- 既存サービス（33→6 次元へ変換） ---
+    Z_exist_pc = pca_exist.transform(
+                    scaler_exist.transform(feat_df.values))[:, :6]
+
+    # --- 新サービスも “transform” だけ ---
+    Z_new_pc = pca_exist.transform(
+                scaler_exist.transform(emb_new))[:, :6]
+
+    # 既存サービスだけで min / max を決める
+    pc_min = Z_exist_pc.min(axis=0)
+    pc_max = Z_exist_pc.max(axis=0)
+
+    # new が 0-1 を超えたときに余白を付けて描けるように
+    margin  = .05
+    new_scaled = (Z_new_pc - pc_min) / (pc_max - pc_min + 1e-8)
+    r_low  = np.floor((new_scaled.min() - margin)*10)/10   # 例: -0.2
+    r_high = np.ceil ((new_scaled.max() + margin)*10)/10   # 例:  1.3
+
+
+    # 0–1 スケール
+    mins = score_df.min();  maxs = score_df.max()
+    score_scaled = (score_df - mins) / (maxs - mins + 1e-8)
+    
+    # 既存サービス
     save_radar_charts(
-        z_matrix   = Z_new_6,          # ← 生の値 (N_new, 6)
-        svc_names  = [f"new{i}" for i in range(z_new.shape[0])],
-        output_dir = radar_new_dir,
-        sel_idx    = sel_idx,
-        mins       = z_min,            # ← 既存サービスの min を共有
-        maxs       = z_max,            #    〃         max  〃
-        ylim       = (r_low, r_high)   # 外周・内周を固定（例 −0.2～1.3）
+        z_matrix = Z_exist_pc,
+        svc_names= feat_df.index.tolist(),
+        output_dir = os.path.join(config.results_data_path, "radar_pca_exist"),
+        sel_idx  = list(range(6)),              # PC1…PC6
+        mins     = pc_min,
+        maxs     = pc_max,
+        ylim     = (0, 1.0)
     )
 
+    # 新サービス
+    save_radar_charts(
+        z_matrix = Z_new_pc,
+        svc_names= [f"new{i}" for i in range(Z_new_pc.shape[0])],
+        output_dir = os.path.join(config.results_data_path, "radar_pca_new"),
+        sel_idx    = list(range(6)),
+        mins       = pc_min,                    # 既存と同じ
+        maxs       = pc_max,
+        ylim       = (r_low, r_high)            # はみ出し対応
+    )
+
+    # # # 可視化したいサービス
+    # # top_services = df_result["service"].tolist()
+
+    # # save_radar_batch(score_scaled,
+    # #                 sel_services = top_services,
+    # #                 out_png = os.path.join(config.results_data_path,"pca_radar.png"),
+    # #                 color_rule = lambda s: "firebrick" if s.startswith("new") else "steelblue")
 
 
 
+    # # ★ new サービスだけを取り出してはみ出しレンジ計算
+    # new_only  = score_df.loc[[s for s in score_df.index if s.startswith("new")]]
+    # r_low_pc  = np.floor((new_only.min().min() - .05)*10)/10
+    # r_high_pc = np.ceil ((new_only.max().max() + .05)*10)/10
 
-
+    # save_radar_batch(score_df,
+    #                 sel_services = score_df.index.tolist(),   # 全サービス可
+    #                 out_png      = os.path.join(config.results_data_path,
+    #                                             "pca_radar_all.png"),
+    #                 color_rule   = lambda s: "crimson" if s.startswith("new")
+    #                                             else "steelblue",
+    #                 rmin=r_low_pc, rmax=r_high_pc)            # ← 追加
 
 
     # Optimal Transport
@@ -339,6 +400,16 @@ def main(args, config: Config = None):
    
     # 結果の可視化と新サービスの特徴量保存
     Y_fut_df = visualize_results(df_result, Y_fut, feat_df, config, logger)
+ 
+ 
+    # VAEのpcaしたレーダーチャートの保存(df_resultをotで作ってるから)
+    # 可視化したいサービス
+    top_services = df_result["service"].tolist()
+
+    save_radar_batch(score_scaled,
+                    sel_services = top_services,
+                    out_png = os.path.join(config.results_data_path,"pca_radar.png"),
+                    color_rule = lambda s: "firebrick" if s.startswith("new") else "steelblue")
     
 if __name__ == "__main__":
     args = get_args()
