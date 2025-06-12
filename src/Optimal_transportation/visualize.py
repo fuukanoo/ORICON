@@ -28,6 +28,7 @@ def plot_inbound_flow(
     # ── 既存サービス部分だけ取り出し ────────────────────────
     row_exist = row = df.loc[target]
     row_exist = row.drop(["nonuser", "residual"])
+    row_exist = row_exist[row_exist > 0] 
 
     if top_k is not None:                      # ← ★ すべて表示も選べるように
         row_exist = row_exist.sort_values(ascending=False).head(top_k)
@@ -47,7 +48,7 @@ def plot_inbound_flow(
 
     # □ 各ノード
     for k_, (x, y) in pos.items():
-        ax.add_patch(Circle((x, y), 0.8, fc="#eeeeee", ec="k", lw=1.2))
+        ax.add_patch(Circle((x, y), 0.8, fc="#eeeeee", ec="k", lw=1.2, zorder=1))
         ax.text(x, y, label[k_],
                 ha="center", va="center",
                 fontsize=12, weight="bold",
@@ -58,10 +59,14 @@ def plot_inbound_flow(
         x1, y1 = pos[src]
         x2, y2 = pos["new"]
 
-        ax.add_patch(FancyArrowPatch(
-            (x1, y1), (x2, y2),
-            arrowstyle="-|>", mutation_scale=15,
-            lw=1.5, color="gray"))
+        patch = FancyArrowPatch(
+        (x1, y1), (x2, y2),
+        arrowstyle="-|>", mutation_scale=15,
+        lw=1.5, color="gray",
+        zorder=5               # ここ！
+        )
+        ax.add_patch(patch) 
+    
 
         # 途中 60% 付近にテキスト
         tx = x1 * 0.4 + x2 * 0.6
@@ -70,7 +75,7 @@ def plot_inbound_flow(
                 f"{src}\n{int(n_people):,}人",
                 ha="center", va="center",
                 fontsize=10, weight="bold",
-                fontproperties=font_prop)
+                fontproperties=font_prop, zorder=6)
 
     # □ 既存サービス → 新サービス
     for svc, n in row_exist.items():

@@ -336,7 +336,7 @@ def main(args, config: Config = None):
         target="new4",
         csv_path=config.results_data_path + "/ot_flow_detail.csv",
         out_dir=config.results_data_path + "/flow_figs",
-        top_k=None,
+        top_k=20,
         save_png=True
     )
     logger.info(f"Flow diagram saved: {png_path}")
