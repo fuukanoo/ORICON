@@ -1,0 +1,33 @@
+■ 累積寄与率 (PC1–PC6): 0.8109
+
+■ 各主成分の寄与率 (絶対値) 上位 3
+PC1:
+  UX_mean                         loading = +0.2948
+  Overall_satisfaction            loading = +0.2934
+  Catalogue_volume                loading = +0.2922
+
+PC2:
+  SDGs_influence                  loading = +0.3916
+  Genre_2_top_share               loading = +0.3780
+  Extra_service_use               loading = +0.3753
+
+PC3:
+  Genre_4_top_share               loading = +0.3354
+  Genre_10_top_share              loading = +0.3105
+  Genre_11_top_share              loading = -0.2985
+
+PC4:
+  Original_quality                loading = +0.4064
+  Genre_14_top_share              loading = +0.3641
+  Usage_tenure_months             loading = -0.3421
+
+PC5:
+  Genre_11_top_share              loading = +0.3844
+  Original_quality                loading = +0.3301
+  Genre_10_top_share              loading = +0.3204
+
+PC6:
+  Genre_9_top_share               loading = +0.5217
+  Genre_10_top_share              loading = +0.3627
+  Genre_8_top_share               loading = +0.3599
+

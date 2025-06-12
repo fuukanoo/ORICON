@@ -1,127 +1,159 @@
+
+
 """
-PCA 実行と付随する CSV / 図の保存をまとめたユーティリティ
-レーダーチャートの出力も含む
+PCA を
+  1) 既存サービスだけで fit
+  2) 新サービスを後から project
+  3) 6 主成分のレーダーチャートを保存
+するためのユーティリティを１から実装。
 """
 import os, math
-import numpy as np, pandas as pd
+import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
+import joblib
 
 
-def run_pca(X_exist: np.ndarray,
-            X_new  : np.ndarray,
-            feat_cols,
-            svc_exist_names,
-            out_dir: str,
-            n_components: int = 6,
-            fit_on_exist_only: bool = True,
-            logger=None):
+# ------------------------------------------------------------
+# 1. 既存サービスで PCA を学習
+# ------------------------------------------------------------
+def fit_pca_existing(X_exist: np.ndarray,
+                     feat_cols,
+                     svc_names,
+                     out_dir: str,
+                     n_components: int = 6,
+                     logger=None):
     """
-    33 次元 → PCA → スコア & ローディングを保存
-    戻り値:
-        score_df (DataFrame) … 行=サービス名, 列=PC1..n
-        load_df  (DataFrame) … 行=PC, 列=元特徴
+    X_exist      : (N_exist, p) 既存サービス行列
+    feat_cols    : 元特徴名リスト (長さ p)
+    svc_names    : 行名 (= 既存サービス名リスト, 長さ N_exist)
+    返り値       : scaler, pca, score_df, load_df
     """
-    # ---------- 1) Standardize ----------
-    if fit_on_exist_only:
-        scaler = StandardScaler().fit(X_exist)
-    else:
-        scaler = StandardScaler().fit(np.vstack([X_exist, X_new]))
+    os.makedirs(out_dir, exist_ok=True)
 
-    X_exist_std = scaler.transform(X_exist)
-    X_new_std   = scaler.transform(X_new)
+    # ---- ① 標準化 ----
+    scaler = StandardScaler().fit(X_exist)
+    X_std  = scaler.transform(X_exist)
 
-    # ---------- 2) PCA ----------
-    if fit_on_exist_only:
-        pca = PCA(n_components=n_components, random_state=42).fit(X_exist_std)
-    else:
-        pca = PCA(n_components=n_components, random_state=42).fit(
-                np.vstack([X_exist_std, X_new_std]))
+    # ---- ② PCA ----
+    pca = PCA(n_components=n_components, random_state=42).fit(X_std)
+    scores = pca.transform(X_std)                         # (N_exist, k)
 
-    scores_exist = pca.transform(X_exist_std)
-    scores_new   = pca.transform(X_new_std)
-    scores       = np.vstack([scores_exist, scores_new])
-
-    # ----- ログ -----
-    if logger:
-        logger.info(f"[PCA] cum.explained={pca.explained_variance_ratio_.cumsum()[-1]:.3f}")
-
-    # ---------- DataFrame ----------
-    svc_all = svc_exist_names + [f"new{i}" for i in range(X_new.shape[0])]
-    score_df = pd.DataFrame(scores,
-                            index=svc_all,
+    # ---- 可視化 & 保存 ----
+    score_df = pd.DataFrame(scores, index=svc_names,
                             columns=[f"PC{i+1}" for i in range(n_components)])
     load_df  = pd.DataFrame(pca.components_,
                             index=[f"PC{i+1}" for i in range(n_components)],
                             columns=feat_cols)
 
-    # ---------- 追加 ① : 上位 3 特徴量を抽出して CSV ----------
-    top_rows = []
-    for pc in load_df.index:                      # 例: PC1‥PC6
-        top3 = load_df.loc[pc].abs().nlargest(3)  # 絶対寄与度で上位 3
-        for feat, val in top3.items():
-            top_rows.append([pc, feat, val])
-    top3_df = pd.DataFrame(top_rows,
-                           columns=["PC", "feature", "abs_loading"])
-    top3_df.to_csv(os.path.join(out_dir, "pca_top3_features.csv"), index=False)
+    score_df.to_csv(os.path.join(out_dir, "pca_scores_exist.csv"))
+    load_df .to_csv(os.path.join(out_dir, "pca_loadings_exist.csv"))
+    joblib.dump(scaler, os.path.join(out_dir, "pca_scaler.joblib"))
+    joblib.dump(pca,    os.path.join(out_dir, "pca_model.joblib"))
 
-    # ---------- 追加 ② : 寄与率バー＋累積寄与率 ----------
-    plt.figure(figsize=(10, 4))
-    plt.bar(range(1, n_components + 1), pca.explained_variance_ratio_)
-    plt.xlabel("Principal Component")
-    plt.ylabel("Explained Variance Ratio")
-    plt.title("Contribution of Each Principal Component")
+    # 寄与率バー
+    plt.figure(figsize=(8, 3))
+    plt.bar(range(1, n_components+1), pca.explained_variance_ratio_)
+    plt.xlabel("Principal Component"); plt.ylabel("Explained Var Ratio")
+    plt.title("Existing services PCA")
     plt.tight_layout()
-    plt.savefig(os.path.join(out_dir, "pca_variance_bar.png"), dpi=150)
+    plt.savefig(os.path.join(out_dir, "pca_variance_exist.png"), dpi=120)
     plt.close()
 
-    # 累積寄与率を TXT にも残す
-    with open(os.path.join(out_dir, "pca_cum_ratio.txt"), "w") as f:
-        f.write(f"累積寄与率: {pca.explained_variance_ratio_.cumsum()[-1]:.3f}\n")
+    if logger:
+        logger.info(f"[PCA] cum.explained={pca.explained_variance_ratio_.cumsum()[-1]:.3f}")
+        
+    # ------------------------------------------------------------
+    # ③  主成分ごとの |loading| 上位 3  と  累積寄与率  を txt 保存
+    # ------------------------------------------------------------
+    summary_path = os.path.join(out_dir, "pca_summary.txt")
+    with open(summary_path, "w", encoding="utf-8") as f:
 
-    # ---------- 保存 ----------
+        # 累積寄与率
+        cum_ratio = pca.explained_variance_ratio_.cumsum()[-1]
+        f.write(f"■ 累積寄与率 (PC1–PC{n_components}): {cum_ratio:.4f}\n\n")
+
+        # 各 PC で |loading| が大きい特徴トップ3
+        f.write("■ 各主成分の寄与率 (絶対値) 上位 3\n")
+        for pc_idx, comp in enumerate(pca.components_):          # comp = 1×p
+            pc_name = f"PC{pc_idx+1}"
+            # 絶対値で大きい順にインデックス取得
+            top_idx = np.argsort(np.abs(comp))[::-1][:3]          # 上位3列
+            f.write(f"{pc_name}:\n")
+            for j in top_idx:
+                feat   = feat_cols[j]
+                loading = comp[j]                                 # 符号付き値
+                f.write(f"  {feat:30s}  loading = {loading:+.4f}\n")
+            f.write("\n")
+
+    if logger:
+        logger.info(f"[PCA] summary saved → {summary_path}")
+
+    return scaler, pca, score_df, load_df
+
+
+# ------------------------------------------------------------
+# 2. 新サービスを既存 PCA へ射影
+# ------------------------------------------------------------
+def project_new(X_new: np.ndarray,
+                scaler,
+                pca,
+                out_dir: str,
+                svc_prefix: str = "new",
+                n_components: int = 6):
+    """
+    返り値: score_df_new (DataFrame, 行=new0,new1…, 列=PC1..k)
+    """
     os.makedirs(out_dir, exist_ok=True)
-    score_df.to_csv(os.path.join(out_dir, "pca_scores.csv"))
-    load_df .to_csv(os.path.join(out_dir, "pca_loadings.csv"))
+    X_new_std   = scaler.transform(X_new)
+    scores_new  = pca.transform(X_new_std)[:, :n_components]
+    score_df_new = pd.DataFrame(
+        scores_new,
+        index=[f"{svc_prefix}{i}" for i in range(X_new.shape[0])],
+        columns=[f"PC{i+1}" for i in range(n_components)]
+    )
+    score_df_new.to_csv(os.path.join(out_dir, "pca_scores_new.csv"))
+    return score_df_new
 
-    return score_df, load_df, pca.explained_variance_ratio_, scaler, pca
 
+# ------------------------------------------------------------
+# 3. レーダーチャート（1 サービス 1 枚 or 一括）
+# ------------------------------------------------------------
 def _hex_radar(ax, vals, labels, title,
                color="steelblue", alpha=.25,
                rmin=0, rmax=1):
     k = len(vals)
-    ang = np.linspace(0, 2*np.pi, k, endpoint=False)
-    vals = np.concatenate([vals, [vals[0]]])
-    ang  = np.concatenate([ang , [ang[0]]])
+    ang  = np.linspace(0, 2*np.pi, k, endpoint=False)
+    vals = np.concatenate([vals,  [vals[0]]])
+    ang  = np.concatenate([ang,   [ang[0]]])
 
-    ax.plot(ang, vals, 'o-', lw=1.5, color=color)
+    ax.plot(ang, vals, lw=1.5, color=color)
     ax.fill(ang, vals, color=color, alpha=alpha)
-    ax.set_xticks(ang[:-1])
-    ax.set_xticklabels(labels, fontsize=7)
+    ax.set_xticks(ang[:-1]); ax.set_xticklabels(labels, fontsize=7)
     ax.set_ylim(rmin, rmax)
     ax.set_yticks([rmin, (rmin+rmax)/2, rmax])
     ax.grid(ls='--', alpha=.4)
     ax.set_title(title, y=1.12, fontsize=10)
 
 
-def save_radar_batch(score_scaled_df, sel_services,
-                     out_png, color_rule=None, rmin=0, rmax=1):
+def save_radar_batch(score_df: pd.DataFrame,
+                     out_dir: str,
+                     color_rule=None,
+                     rmin=0, rmax=1):
     """
-    ・score_scaled_df : 行 = サービス名, 列 = PC1..6 (0-1 スケール済み)
-    ・sel_services    : 描画したいサービス名リスト
+    score_df : 行=サービス, 列=PC1..PCk
     """
-    N = len(sel_services)
-    rows, cols = math.ceil(N/3), 3
-    fig = plt.figure(figsize=(cols*4, rows*4))
+    os.makedirs(out_dir, exist_ok=True)
+    labels = score_df.columns.tolist()
 
-    for i, svc in enumerate(sel_services, 1):
-        ax = fig.add_subplot(rows, cols, i, projection='polar')
-        vals = score_scaled_df.loc[svc].values
-        col  = color_rule(svc) if color_rule else "steelblue"
-        _hex_radar(ax, vals,
-                   labels=score_scaled_df.columns,
-                   title=svc,
+    for svc, row in score_df.iterrows():
+        fig, ax = plt.subplots(figsize=(4, 4), subplot_kw=dict(polar=True))
+        col = color_rule(svc) if color_rule else "steelblue"
+        _hex_radar(ax, row.values, labels, svc,
                    color=col, rmin=rmin, rmax=rmax)
-    plt.tight_layout()
-    plt.savefig(out_png, dpi=150); plt.close()
+        plt.tight_layout()
+        plt.savefig(os.path.join(out_dir, f"radar_{svc}.png"), dpi=120)
+        plt.close()
+
