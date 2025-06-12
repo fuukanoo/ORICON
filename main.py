@@ -12,17 +12,21 @@ import os
 import matplotlib.pyplot as plt 
 import seaborn as sns 
 from sklearn.metrics import pairwise_distances 
-
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="matplotlib")
 
 from src.BYOL.byol import train_byol
 from src.BYOL.byol_models import BYOL, byol_loss
-from src.VAE.vae import VAE, train_vae
+# from src.VAE.vae import VAE, train_vae
+from src.VAE.CondBetaVAE import CondBetaVAE, vae_loss, train_vae
+from src.VAE.traverse_latents_condbetavae import save_latent_traversal_plot
 from src.PCA_UMAP.visualize import visualize_pca_umap 
 from utils.utils import set_seed, read_data, make_feature_df, scale_imputer
 from utils.logger import init_logger
 from utils.args import get_args
 from utils.dataloader import ServiceDataset
-from Optimal_transportation.ot_main import run_ot_for_candidate
+from src.Optimal_transportation.ot_main import run_ot_for_candidate
+from src.Optimal_transportation.utils import load_and_scale_data, calculate_mass_vectors, save_radar_charts, radar_new_services
 
 class Config:
     """argsで変えないもの"""
@@ -104,26 +108,198 @@ def main(args, config: Config = None):
             # This part is omitted for brevity, but you can implement it as needed.
     
     # VAE
-    vae_dataset = TensorDataset(torch.from_numpy(embeddings))
-    vae_dataloaer = DataLoader(vae_dataset, batch_size=8, shuffle=True)
-    embeddings = np.load(f"{config.shared_data_path}/embeddings.npy")
+    # 📌 追記: 条件データ作成
+    logger.info("Building condition_onehot (ペイン=KMeans 6クラス例)…")
+    from sklearn.cluster import KMeans
+
+    K = 6
+    km = KMeans(n_clusters=K, random_state=42).fit(embeddings)
+    cond_onehot = np.eye(K, dtype=np.float32)[km.labels_]   # shape (N, K)
+
+    condition_dim = 0
+    np.save(f"{config.shared_data_path}/cond_onehot.npy", cond_onehot)
     
-    input_dim = embeddings.shape[1]
-    vae = VAE(input_dim, args.vae_hidden_dim, args.vae_latent_dim, args.vae_sigma).to(device)
+    # 📌 変更: DataLoader を条件付きに変更
+    cond_onehot = np.load(f"{config.shared_data_path}/cond_onehot.npy")
+    vae_dataset  = TensorDataset(torch.from_numpy(embeddings).float())
+    vae_dataloader = DataLoader(vae_dataset, batch_size=8, shuffle=True)
+    
+    # 📌 変更: VAE → CondBetaVAE
+    vae = CondBetaVAE(
+            input_dim = embeddings.shape[1],
+            hidden_dim= args.vae_hidden_dim,
+            latent_dim= args.vae_latent_dim,
+            condition_dim = condition_dim,
+            beta = args.vae_beta
+    ).to(device)
     vae_optimizer = torch.optim.Adam(vae.parameters(), lr=args.vae_lr)
     
+    # vae_dataset = TensorDataset(torch.from_numpy(embeddings))
+    # vae_dataloaer = DataLoader(vae_dataset, batch_size=8, shuffle=True)
+    # embeddings = np.load(f"{config.shared_data_path}/embeddings.npy")
+    
+    # input_dim = embeddings.shape[1]
+    # vae = VAE(input_dim, args.vae_hidden_dim, args.vae_latent_dim, args.vae_sigma).to(device)
+    # vae_optimizer = torch.optim.Adam(vae.parameters(), lr=args.vae_lr)
+    
     #TODO: 64次元データのままにしてる。33にするなら追加で処理必要。あるいは33のまま最初から処理をするか
-    emb_new = train_vae(
+    emb_new, z_new, recon_hist, kl_hist = train_vae(
         vae=vae,
-        loader=vae_dataloaer,      # DataLoader
+        loader=vae_dataloader,      # DataLoader
         opt=vae_optimizer,
         dataset=vae_dataset,       # TensorDataset
         beta=args.vae_beta,
         latent_dim=args.vae_latent_dim,
-        epochs=args.vae_n_epochs
+        epochs=args.vae_n_epochs,
+        plot_dir     = config.results_data_path
     )
+    
+    
+
     # 生成結果を保存して OT で使えるように
     np.save(f"{config.shared_data_path}/emb_new.npy", emb_new)
+    
+    save_latent_traversal_plot(
+        model=vae,
+        device=device,
+        latent_dim=args.vae_latent_dim,
+        output_dir=config.results_data_path,
+        feat_cols  = list(feat_df.columns)
+    )
+    
+    # 生成した20件の z を CSV に出力
+    z_csv_path = os.path.join(config.results_data_path, "latent_vectors_new_services.csv")
+    pd.DataFrame(
+        z_new,
+        columns=[f"z{i}" for i in range(args.vae_latent_dim)]
+    ).to_csv(z_csv_path, index=False)
+    logger.info(f"latent vectors (new services) saved → {z_csv_path}")
+    
+    # ★ ここから相関分析を追加 ★ ---------------------------------
+    logger.info("Computing Pearson correlation between latent Z and original features…")
+
+    # ① 既存サービスを latent 空間に埋め込み
+    vae.eval()
+    with torch.no_grad():
+        z_existing, _ = vae.encode(torch.tensor(embeddings, dtype=torch.float32, device=device), None)
+        z_existing = z_existing.cpu().numpy()
+
+
+    # ---------------------------------------------------------
+    # ② DataFrame 合体 (Z 16列 + 元特徴33列)
+    # ---------------------------------------------------------
+    df_corr = pd.concat(
+        [
+            pd.DataFrame(z_existing, columns=[f"z{i}" for i in range(args.vae_latent_dim)]),
+            feat_df.reset_index(drop=True)
+        ],
+        axis=1
+    )
+
+    # ③ 相関係数行列を計算
+    corr_mat = df_corr.corr(method="pearson")
+
+    # ④ Z と元特徴のブロックだけ切り出し
+    corr_z_feat = corr_mat.loc[[f"z{i}" for i in range(args.vae_latent_dim)],
+                            feat_df.columns]
+
+    # ⑤ CSV とヒートマップ保存
+    corr_csv = os.path.join(config.results_data_path, "z_feature_correlation.csv")
+    corr_z_feat.to_csv(corr_csv)
+    logger.info(f"Z–feature correlation saved → {corr_csv}")
+
+    plt.figure(figsize=(10, 6))
+    sns.heatmap(corr_z_feat, cmap="coolwarm", center=0, annot=False)
+    plt.title("Latent Z vs Original Feature Pearson Correlation")
+    plt.tight_layout()
+    corr_png = os.path.join(config.results_data_path, "z_feature_correlation.png")
+    plt.savefig(corr_png); plt.close()
+    logger.info(f"Correlation heatmap saved → {corr_png}")
+
+    # ---------------------------------------------------------
+    # ★ ⑥ トップ6軸を抽出し保存（|corr| 最大値で選定）
+    # ---------------------------------------------------------
+    abs_corr      = corr_z_feat.abs()          # |corr|
+    top_strength  = abs_corr.max(axis=1)       # 各 z の最大相関値
+
+    chosen = []
+    for z in top_strength.sort_values(ascending=False).index:
+        feat = abs_corr.loc[z].idxmax()        # その z が一番効く特徴
+        if feat not in [f for _, f in chosen]: # 重複回避
+            chosen.append((z, feat))           # (z名, 特徴名)
+        if len(chosen) == 6:
+            break
+
+    # DataFrame 化して保存
+    top6_df = pd.DataFrame(chosen, columns=["latent_axis", "max_feature"])
+    top6_df["abs_corr"] = top6_df.apply(lambda r: abs_corr.loc[r.latent_axis, r.max_feature], axis=1)
+
+    top6_path = os.path.join(config.results_data_path, "top6_latent_axes.csv")
+    top6_df.to_csv(top6_path, index=False)
+    logger.info(f"Top-6 latent axes (dup-free) saved → {top6_path}")
+
+    # 数値インデックスをレーダーで使える形に
+    sel_idx = [int(z[1:]) for z in top6_df["latent_axis"]]
+    
+    svc_names = feat_df.index.tolist()
+    
+    # ---------------------------------------------------------
+    # (既存サービス) まず 6 軸だけ抜き出して min / max を取る
+    # ---------------------------------------------------------
+    Z_exist_6 = z_existing[:, sel_idx]               # shape = (N_exist, 6)
+    z_min     = Z_exist_6.min(axis=0)                # (6,)
+    z_max     = Z_exist_6.max(axis=0)                # (6,)
+
+    # ---------------------------------------------------------
+    # (新サービス) 既存 min-max で相対スケール
+    # ---------------------------------------------------------
+    Z_new_6        = z_new[:, sel_idx]               # 生の z (N_new, 6)
+    Z_new_scaled   = (Z_new_6 - z_min) / (z_max - z_min + 1e-8)
+    # Z_new_scaled = np.clip(Z_new_scaled, r_low, r_high)
+
+    # ---------------------------------------------------------
+    # ここがポイント ① : はみ出し余裕を計算
+    #   既存基準の 0〜1 を超えても “そのまま” 描けるように
+    #   ■ r_low  : new の最小値 (<=0 ならマイナス) − ちょい余裕
+    #   ■ r_high : new の最大値 (>=1 なら 1超)   ＋ ちょい余裕
+    # ---------------------------------------------------------
+    margin = 0.05
+    r_low  = np.floor( (Z_new_scaled.min() - margin) * 10 ) / 10   # 例えば -0.2
+    r_high = np.ceil ( (Z_new_scaled.max() + margin) * 10 ) / 10   # 例えば  1.3
+
+    # ---------------------------------------------------------
+    # 保存ディレクトリ
+    # ---------------------------------------------------------
+    radar_new_dir = os.path.join(config.results_data_path, "radar_new")
+    os.makedirs(radar_new_dir, exist_ok=True)
+
+    # ---------------------------------------------------------
+    # 1 枚ずつ描画（save_radar_charts は前回示した汎用版を想定）
+    #   • mins / maxs = None  → もうスケールしてあるので不要
+    #   • ylim        = (r_low, r_high)  ← 下限も上限も固定
+    # ---------------------------------------------------------
+    save_radar_charts(
+        z_matrix = z_existing,
+        svc_names= feat_df.index.tolist(),
+        output_dir = config.results_data_path,
+        sel_idx  = sel_idx,
+        mins      = z_min,
+        maxs      = z_max,
+        ylim      = (0, 1.0)  # ← ★ 既存サービスは 0〜1 の範囲で固定
+    )
+    
+
+    # (新) スケール前の 6列だけ抜いた行列を渡す
+    save_radar_charts(
+        z_matrix   = Z_new_6,          # ← 生の値 (N_new, 6)
+        svc_names  = [f"new{i}" for i in range(z_new.shape[0])],
+        output_dir = radar_new_dir,
+        sel_idx    = sel_idx,
+        mins       = z_min,            # ← 既存サービスの min を共有
+        maxs       = z_max,            #    〃         max  〃
+        ylim       = (r_low, r_high)   # 外周・内周を固定（例 −0.2～1.3）
+    )
+
 
 
 

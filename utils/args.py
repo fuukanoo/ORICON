@@ -30,7 +30,7 @@ def get_args():
                         help="Latent dimension for VAE (default: 16)")
     parser.add_argument("--vae_hidden_dim", type=int, default=64,
                         help="Hidden dimension for VAE (default: 64)")
-    parser.add_argument("--vae_beta", type=float, default=1.0,
+    parser.add_argument("--vae_beta", type=float, default=2.0,
                         help="Weight for KL divergence in VAE loss (default: 1.0)")
     parser.add_argument("--vae_sigma", type=float, default=1.0,
                         help="Strength of sampling in VAE (default: 1.0)")

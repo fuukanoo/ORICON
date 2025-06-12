@@ -2,6 +2,8 @@ import numpy as np
 from ot.unbalanced import sinkhorn_unbalanced
 from .config import OTConfig
 from .utils import compute_cost_matrix
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="matplotlib")
 
 def run_ot_for_candidate(X_curr, Y_fut, idx, mass_curr, nonuser_mass, residual_mass, eps=OTConfig.EPS, tau=OTConfig.TAU):
     """新サービス候補1つに対するOT計算"""

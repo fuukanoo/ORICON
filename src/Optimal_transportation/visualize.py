@@ -1,9 +1,11 @@
-import numpy as pd
+import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import matplotlib.font_manager as fm
 import os
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="matplotlib")
 
 def setup_japanese_font():
     """日本語フォントの設定"""
