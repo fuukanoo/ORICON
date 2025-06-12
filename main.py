@@ -35,6 +35,7 @@ from utils.args import get_args
 from utils.dataloader import ServiceDataset
 from src.Optimal_transportation.ot_main import run_ot_for_candidate
 from src.Optimal_transportation.utils import load_and_scale_data, calculate_mass_vectors, save_radar_charts, radar_new_services
+from src.Optimal_transportation.visualize import plot_inbound_flow
 
 class Config:
     """argsで変えないもの"""
@@ -303,20 +304,42 @@ def main(args, config: Config = None):
     # 質量ベクトルの計算
     a_vec = calculate_mass_vectors(feat_df, OTConfig, logger)
     
-    # OT実行
-    results = []
-    for idx in range(Y_fut.shape[0]):
-        res = run_ot_for_candidate(X_curr, Y_fut, idx, 
-                                 mass_curr=a_vec[:-2],
-                                 nonuser_mass=a_vec[-2],
-                                 residual_mass=a_vec[-1])
-        results.append(res)
+    svc_names = feat_df.index.tolist()                 # 既存サービス名のリスト
 
-    # 結果の保存
-    df_result = pd.DataFrame(results)
-    os.makedirs(config.results_data_path, exist_ok=True)
+    summary_rows = []
+    flow_rows    = []
+
+    for idx in range(Y_fut.shape[0]):
+        summ, flows = run_ot_for_candidate(
+            X_curr, Y_fut, idx,
+            mass_curr=a_vec[:-2],
+            nonuser_mass=a_vec[-2],
+            residual_mass=a_vec[-1],
+            svc_names=svc_names)       # 👈 追加引数
+
+        summary_rows.append(summ)                   # これまで通り
+        flow_rows.append({"service": summ["service"], **flows})  # 詳細フロー
+
+
+    # ① これまでのサマリー
+    df_result = pd.DataFrame(summary_rows)
     df_result.to_csv(f"{config.results_data_path}/ot_results.csv", index=False)
+
+    # ② 既存サービス → 新サービスの流入人数マトリクス
+    df_flows  = pd.DataFrame(flow_rows)             # 行 = new0 … new19
+    df_flows.to_csv(f"{config.results_data_path}/ot_flow_detail.csv", index=False)
+
     logger.info(f"Results saved to {config.results_data_path}/ot_results.csv")
+    
+    # 例：上位 2 件＋非ユーザーで flow 図を保存
+    png_path = plot_inbound_flow(
+        target="new4",
+        csv_path=config.results_data_path + "/ot_flow_detail.csv",
+        out_dir=config.results_data_path + "/flow_figs",
+        top_k=None,
+        save_png=True
+    )
+    logger.info(f"Flow diagram saved: {png_path}")
    
     # 結果の可視化と新サービスの特徴量保存
     Y_fut_df = visualize_results(df_result, Y_fut, feat_df, config, logger)

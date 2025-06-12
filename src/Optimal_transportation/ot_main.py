@@ -5,7 +5,7 @@ from .utils import compute_cost_matrix
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="matplotlib")
 
-def run_ot_for_candidate(X_curr, Y_fut, idx, mass_curr, nonuser_mass, residual_mass, eps=OTConfig.EPS, tau=OTConfig.TAU):
+def run_ot_for_candidate(X_curr, Y_fut, idx, mass_curr, nonuser_mass, residual_mass, svc_names, eps=OTConfig.EPS, tau=OTConfig.TAU):
     """新サービス候補1つに対するOT計算"""
     Y_single = Y_fut[idx].reshape(1, -1)
 
@@ -21,30 +21,36 @@ def run_ot_for_candidate(X_curr, Y_fut, idx, mass_curr, nonuser_mass, residual_m
     a_vec /= a_vec.sum()
     b = np.array([1.0])
 
-    # OT計算
+    # OT計算 -------------------------------------------------------
     T = sinkhorn_unbalanced(a_vec, b, D, reg=eps, reg_m=tau)
-    
-    # 結果の集計
+
+    # --------------------------------------------------------------
+    # (A) 流入人数の内訳を人数ベースで計算
+    #     - 既存サービスごとの人数
+    #     - 非ユーザー，残余ユーザー
+    # --------------------------------------------------------------
     total_market_size = int(OTConfig.TOTAL_POPULATION * (1 - OTConfig.RESIDUAL_MASS))
-    inbound_total = T.sum()
-    inbound_users = inbound_total * total_market_size
+    flows_existing = (T[:-2, 0] * total_market_size).astype(int)   # shape = (N_exist,)
+    flow_nonuser   = int(T[-2, 0] * total_market_size)
+    flow_residual  = int(T[-1, 0] * total_market_size)
 
-    from_existing = T[:-2, 0].sum() * total_market_size
-    from_nonuser = T[-2, 0] * total_market_size
-    from_residual = T[-1, 0] * total_market_size
+    # (B) 既存→新サービスのフローを dict にまとめて返す
+    flow_dict = {svc: int(n) for svc, n in zip(svc_names, flows_existing)}
+    flow_dict["nonuser"]  = flow_nonuser
+    flow_dict["residual"] = flow_residual
 
-    novelty = D_existing.min()
-    blue_score = (T[-2, 0] * novelty)  # 非ユーザー率 × 新規性
-
-    return {
+    # (C) 既存ロジックの要約もそのまま
+    summary = {
         "service": f"new{idx}",
-        "users_existing": int(from_existing),
-        "users_nonuser": int(from_nonuser),
-        "users_residual": int(from_residual),
-        "total_users": int(inbound_users),
-        "blue_score": float(blue_score),
-        "novelty": float(novelty),
-        "sales_JPY": int(inbound_users * OTConfig.ARPU),
-        "nonuser_ratio": float(from_nonuser / inbound_users) if inbound_users > 0 else 0,
-        "residual_ratio": float(from_residual / inbound_users) if inbound_users > 0 else 0
+        "users_existing": int(flows_existing.sum()),
+        "users_nonuser":  flow_nonuser,
+        "users_residual": flow_residual,
+        "total_users":    int(T.sum() * total_market_size),
+        "blue_score":     float(T[-2, 0] * D_existing.min()),
+        "novelty":        float(D_existing.min()),
+        "sales_JPY":      int(T.sum() * total_market_size * OTConfig.ARPU),
+        "nonuser_ratio":  flow_nonuser  / max(1, int(T.sum()*total_market_size)),
+        "residual_ratio": flow_residual / max(1, int(T.sum()*total_market_size)),
     }
+
+    return summary, flow_dict
