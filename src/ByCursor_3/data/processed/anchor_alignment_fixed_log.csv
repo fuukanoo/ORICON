@@ -1,0 +1,2 @@
+timestamp,questions_processed,anchors,coherence_issues,model_used
+2025-06-13 00:03:24.536038,65,8,9,all-MiniLM-L6-v2

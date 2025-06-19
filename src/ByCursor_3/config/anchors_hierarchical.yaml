@@ -1,0 +1,148 @@
+# 階層化アンカー戦略設定ファイル
+# 業種横断分析のための階層構造アンカー定義
+
+core_anchors:
+  # 全業種で確実に適用可能なコアアンカー
+  usability:
+    name: "使いやすさ"
+    description: "UI/UX、手続きの容易さ、操作性"
+    keywords: ["使いやすさ", "操作", "画面", "UI", "サイト", "アプリ", "手続き", "申し込み"]
+    universal: true
+    
+  trust_security:
+    name: "信頼・安全性"
+    description: "会社信頼性、個人情報保護、安全性"
+    keywords: ["信頼", "安心", "安全", "セキュリティ", "会社", "運営"]
+    universal: true
+    
+  price_value:
+    name: "価格価値"
+    description: "料金の妥当性、コストパフォーマンス"
+    keywords: ["料金", "価格", "費用", "コスト", "安さ", "値段", "バランス"]
+    universal: true
+    
+  variety_options:
+    name: "選択肢・多様性"
+    description: "選択肢の豊富さ、サービス充実度"
+    keywords: ["種類", "豊富", "選択肢", "バラエティ", "数", "充実"]
+    universal: true
+
+extended_anchors:
+  # 多くの業種で適用可能だが、重要度が変化するアンカー
+  support_service:
+    name: "サポート・サービス"
+    description: "顧客サポート、付帯サービス"
+    keywords: ["サポート", "対応", "サービス", "フォロー", "相談"]
+    universal: false
+    applicable_industries: ["tenshoku", "insurance", "kekkonsoudanjo", "matching_app"]
+    
+  speed_response:
+    name: "速度・反応性"
+    description: "対応速度、レスポンスの早さ"
+    keywords: ["速度", "早さ", "迅速", "対応", "更新", "頻度"]
+    universal: false
+    applicable_industries: ["subscription_movie", "tenshoku", "matching_app"]
+    
+  quality:
+    name: "品質・性能"
+    description: "サービス品質、提供価値の質"
+    keywords: ["品質", "性能", "精度", "効果", "結果", "成果"]
+    universal: false
+    industry_specific: true  # 業種により定義が大きく変化
+    
+  customization:
+    name: "カスタマイズ性"
+    description: "個別対応、パーソナライゼーション"
+    keywords: ["カスタマイズ", "個別", "パーソナル", "設定", "調整"]
+    universal: false
+    applicable_industries: ["subscription_movie", "matching_app", "tenshoku"]
+
+industry_specific_anchors:
+  # 特定業種でのみ意味を持つアンカー
+  subscription_movie:
+    content_variety:
+      name: "コンテンツ多様性"
+      description: "ジャンル・作品の豊富さ"
+      keywords: ["ジャンル", "作品", "動画", "コンテンツ"]
+    content_freshness:
+      name: "コンテンツ更新性"
+      description: "新作追加、更新頻度"
+      keywords: ["新作", "更新", "追加", "配信"]
+      
+  tenshoku:
+    matching_success:
+      name: "マッチング成功率"
+      description: "求人紹介の適合性、転職成功率"
+      keywords: ["求人", "紹介", "マッチング", "転職", "成功"]
+    career_support:
+      name: "キャリアサポート"
+      description: "キャリア相談、面接支援"
+      keywords: ["キャリア", "面接", "相談", "支援"]
+      
+  hotel:
+    location_access:
+      name: "立地・アクセス"
+      description: "立地条件、交通アクセス"
+      keywords: ["立地", "アクセス", "交通", "場所"]
+    facility_quality:
+      name: "施設品質"
+      description: "ホテル施設の質"
+      keywords: ["施設", "設備", "ホテル", "客室"]
+      
+  kekkonsoudanjo:
+    matching_quality:
+      name: "マッチング品質"
+      description: "相手紹介の質、成婚実績"
+      keywords: ["紹介", "相手", "成婚", "実績"]
+    marriage_support:
+      name: "結婚サポート"
+      description: "婚活支援、アドバイス"
+      keywords: ["婚活", "アドバイス", "サポート", "相談"]
+      
+  insurance:
+    coverage_scope:
+      name: "補償範囲"
+      description: "保険補償の範囲・内容"
+      keywords: ["補償", "保険", "範囲", "給付"]
+    claim_efficiency:
+      name: "請求効率性"
+      description: "保険金請求の簡便性"
+      keywords: ["請求", "手続き", "給付金"]
+
+# 業種横断分析設定
+cross_industry_strategy:
+  # 共通アンカーでの比較分析
+  common_analysis:
+    anchors: ["usability", "trust_security", "price_value", "variety_options"]
+    description: "全業種共通のアンカーでブランド間比較"
+    
+  # 業種グループ分析
+  group_analysis:
+    matching_services:
+      industries: ["tenshoku", "kekkonsoudanjo", "matching_app"]
+      shared_anchors: ["matching_success", "support_service"]
+      description: "マッチング系サービスでの特化分析"
+      
+    content_services:
+      industries: ["subscription_movie", "hotel"]
+      shared_anchors: ["content_variety", "quality"]
+      description: "コンテンツ・施設系サービスでの特化分析"
+      
+    financial_services:
+      industries: ["insurance", "furusato_tax"]
+      shared_anchors: ["coverage_scope", "trust_security"]
+      description: "金融・保険系サービスでの特化分析"
+
+# 分析レベル設定
+analysis_levels:
+  level1_universal:
+    anchors: ["usability", "trust_security", "price_value", "variety_options"]
+    scope: "全業種横断比較"
+    
+  level2_extended:
+    anchors: ["support_service", "speed_response", "quality", "customization"]
+    scope: "業種グループ内比較"
+    
+  level3_specific:
+    anchors: "industry_specific_anchors"
+    scope: "業種内詳細分析" 

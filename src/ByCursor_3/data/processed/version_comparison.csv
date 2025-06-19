@@ -1,0 +1,4 @@
+version,anchor_count,brand_count,record_count,total_samples
+V1_Original,8,49,772,29473.0
+V2_Minimal,2,17,34,13114.0
+V3_Balanced,3,19,54,16783.0

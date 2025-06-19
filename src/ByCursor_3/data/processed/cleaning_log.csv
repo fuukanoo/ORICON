@@ -1,0 +1,2 @@
+﻿step,file,issue,action,timestamp
+normalization,all,スケール正規化: 10.0-4483.0 -> 0-1,正規化実行,2025-06-12 19:15:31.170853

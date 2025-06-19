@@ -1,0 +1,80 @@
+# CISF アンカー設定（最小セット）
+# フェーズ1: 4つのコアアンカーで基盤構築
+
+anchors:
+  usability:
+    name: "使いやすさ"
+    description: "UI/UX、手続きの容易さ、操作性"
+    keywords: 
+      - "使いやすさ"
+      - "操作"
+      - "画面"
+      - "サイト"
+      - "アプリ"
+      - "手続き"
+      - "申し込み"
+      - "登録"
+      - "容易"
+      - "わかりやすさ"
+      - "見やすさ"
+      - "探しやすさ"
+      - "再生"
+    
+  trust_security:
+    name: "信頼・安全性"
+    description: "会社信頼性、個人情報保護、安全性"
+    keywords:
+      - "信頼"
+      - "安心"
+      - "安全"
+      - "セキュリティ"
+      - "会社"
+      - "運営"
+      - "管理"
+      - "安定性"
+      - "信頼性"
+    
+  price_value:
+    name: "価格価値"
+    description: "料金の妥当性、コストパフォーマンス"
+    keywords:
+      - "料金"
+      - "価格"
+      - "費用"
+      - "コスト"
+      - "安さ"
+      - "値段"
+      - "バランス"
+      - "お得"
+      - "適正"
+    
+  variety_options:
+    name: "選択肢・多様性"
+    description: "選択肢の豊富さ、サービス充実度"
+    keywords:
+      - "種類"
+      - "豊富"
+      - "選択肢"
+      - "バラエティ"
+      - "数"
+      - "充実"
+      - "本数"
+      - "ジャンル"
+      - "作品"
+      - "動画"
+      - "コンテンツ"
+      - "更新"
+      - "新作"
+      - "頻度"
+      - "入れ替わり"
+
+# 処理パラメータ
+processing:
+  temperature: 0.05          # Softmax正規化の温度
+  coherence_threshold: 0.4   # Topic coherence検証閾値
+  min_weight_threshold: 0.1  # 最小重み閾値
+
+# ログ設定
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s" 
